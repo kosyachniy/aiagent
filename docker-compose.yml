@@ -1,0 +1,40 @@
+version: '3.8'
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: ai-planner:latest
+    container_name: ai-planner-app
+    env_file:
+      - .env.production
+    ports:
+      - '8000:8000'
+    depends_on:
+      - redis
+    restart: always
+
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: ai-planner:latest
+    container_name: ai-planner-worker
+    command: dramatiq tasks.tasks --processes 1 --threads 4 --redirect-logs
+    env_file:
+      - .env.production
+    depends_on:
+      - redis
+    restart: always
+
+  redis:
+    image: redis:7-alpine
+    container_name: ai-planner-redis
+    ports:
+      - '6379:6379'
+    restart: always
+
+networks:
+  default:
+    driver: bridge
