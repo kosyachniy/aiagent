@@ -13,3 +13,5 @@ pygsheets>=2.0.5
 dramatiq>=1.10.0
 redis>=4.5.0
 python-dotenv>=0.21.0
+pymongo>=4.12.1
+mongo-migrate>=0.1.2

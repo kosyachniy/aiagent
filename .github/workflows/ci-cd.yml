@@ -1,4 +1,4 @@
-name: CI/CD
+name: CI/CD Pipeline
 
 on:
   push:
@@ -7,41 +7,93 @@ on:
     branches: [ main ]
 
 jobs:
-  build-and-test:
+  test:
+    name: Test & Migrate
     runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v3
-      - name: Установить Python и зависимости
-        run: |
-          python -m venv venv
-          . venv/bin/activate
-          pip install -r requirements.txt
-      - name: Запустить тесты
-        run: |
-          . venv/bin/activate
-          pytest --maxfail=1 --disable-warnings -q
-      - name: Сборка Docker-образа
-        run: docker build -t myrepo/ai-planner:${{ github.sha }} .
-      - name: Push в Docker Hub
-        uses: docker/login-action@v2
-        with:
-          registry: docker.io
-          username: ${{ secrets.DOCKERHUB_USER }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
-      - run: docker push myrepo/ai-planner:${{ github.sha }}
+    services:
+      mongo:
+        image: mongo:6.0
+        ports:
+          - 27017:27017
+        options: >-
+          --health-cmd="mongosh --eval 'db.adminCommand({ ping: 1 })'"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
 
-  deploy-to-prod:
-    needs: build-and-test
+    env:
+      MONGO_URI: mongodb://localhost:27017/aiagent
+      MONGO_DB_NAME: aiagent
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v3
+
+      - name: Set up Python 3.10
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Wait for MongoDB to be ready
+        run: |
+          for i in {1..20}; do
+            mongosh --quiet --eval "db.adminCommand('ping')" && break
+            echo "Waiting for Mongo..." && sleep 3
+          done
+
+      - name: Run MongoDB migrations
+        run: ./scripts/run_migrations.sh
+
+      - name: Run tests
+        run: pytest --maxfail=1 --disable-warnings -q
+
+  build-and-publish:
+    name: Build & Publish Docker Image
     runs-on: ubuntu-latest
+    needs: test
     if: github.ref == 'refs/heads/main'
     steps:
-      - name: SSH-деплой
-        uses: appleboy/ssh-action@v0.1.6
+      - name: Check out repository
+        uses: actions/checkout@v3
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v2
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v2
         with:
-          host: ${{ secrets.VPS_HOST }}
-          username: ${{ secrets.VPS_USER }}
-          key: ${{ secrets.VPS_SSH_KEY }}
-          script: |
-            cd /opt/ai-planner
-            docker-compose pull
-            docker-compose up -d
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v4
+        with:
+          context: .
+          push: true
+          tags: |
+            kosyachniy/aiagent:latest
+            kosyachniy/aiagent:${{ github.sha }}
+
+  deploy:
+    name: Deploy to Production
+    runs-on: ubuntu-latest
+    needs: build-and-publish
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - name: Trigger Terraform Apply
+        uses: hashicorp/terraform-github-actions@v1
+        with:
+          tf_actions_version: latest
+          tf_working_dir: infra/
+          tf_version: 1.5.0
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
