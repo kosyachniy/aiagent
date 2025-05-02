@@ -7,7 +7,8 @@ import json
 
 from loguru import logger
 from langchain.prompts import PromptTemplate
-from langchain_openai import OpenAI
+from langchain_openai import ChatOpenAI
+from langchain_core.output_parsers import StrOutputParser
 
 from app.core.config import settings
 import app.db.mongodb as mongodb
@@ -50,13 +51,13 @@ class ReprioritizerGraph:
         ],
     )
 
-    _llm = OpenAI(
+    _llm = ChatOpenAI(
         model_name="o4-mini",
-        temperature=0,
+        # temperature=0,
         openai_api_key=settings.OPENAI_API_KEY,
     )
 
-    _pipeline = _prompt | _llm
+    _pipeline = _prompt | _llm | StrOutputParser()
 
     @staticmethod
     async def run(nav_result: dict) -> dict:
@@ -93,25 +94,31 @@ class ReprioritizerGraph:
             resources_json = json.dumps(resources_docs, default=str, ensure_ascii=False)
 
             # Вызов модели через RunnableSequence
-            logger.debug(
-                "ReprioritizerGraph input initiative: %s", initiative.get("id")
+            logger.debug(f"ReprioritizerGraph input initiative: {initiative.get('id')}")
+            response = await ReprioritizerGraph._pipeline.ainvoke(
+                {
+                    "initiative": initiative_json,
+                    "all_initiatives": all_json,
+                    "business_priorities": business_priorities,
+                    "resources": resources_json,
+                }
             )
-            response = await ReprioritizerGraph._pipeline.arun(
-                initiative=initiative_json,
-                all_initiatives=all_json,
-                business_priorities=business_priorities,
-                resources=resources_json,
-            )
-            logger.debug("ReprioritizerGraph raw response: %s", response)
+            logger.debug(f"ReprioritizerGraph raw response: {response}")
         except Exception as e:
-            logger.exception("Error during ReprioritizerGraph run: %s", e)
+            logger.exception(f"Error during ReprioritizerGraph run: {e}")
             raise
 
         # Парсинг JSON-ответа
         try:
+            # Remove potential markdown code fences
+            if response.startswith("```json"):
+                response = response.removeprefix("```json\n").removesuffix("\n```")
+            elif response.startswith("```"):
+                response = response.removeprefix("```\n").removesuffix("\n```")
+
             result = json.loads(response)
         except json.JSONDecodeError:
-            logger.error("ReprioritizerGraph returned invalid JSON: %s", response)
+            logger.error(f"ReprioritizerGraph returned invalid JSON: {response}")
             raise ValueError("Invalid JSON from ReprioritizerGraph")
 
         return result

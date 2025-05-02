@@ -34,13 +34,13 @@ def process_new_task(task_text: str, chat_id: int):
     try:
         updated_initiative = asyncio.run(pipeline())
     except Exception as e:
-        logger.exception("Error in AI pipeline: %s", e)
+        logger.exception(f"Error in AI pipeline: {e}")
         raise
 
     try:
         sheet_url = update_roadmap_sheet(updated_initiative)
     except Exception as e:
-        logger.exception("Error updating Google Sheets: %s", e)
+        logger.exception(f"Error updating Google Sheets: {e}")
         sheet_url = None
 
     bot = Bot(token=settings.BOT_TOKEN)
@@ -75,7 +75,7 @@ def update_sheet(initiative_id: str, chat_id: int = None):
     try:
         sheet_url = update_roadmap_sheet(initiative)
     except Exception as e:
-        logger.exception("Error updating sheet: %s", e)
+        logger.exception(f"Error updating sheet: {e}")
         sheet_url = None
 
     if chat_id:

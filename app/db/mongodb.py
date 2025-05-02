@@ -64,16 +64,9 @@ class TaskRepo:
 
     @staticmethod
     async def find_newest_by_initiative(initiative_id: str) -> Optional[dict]:
-        """Находит самую новую задачу в рамках инициативы по дате создания или ObjectId"""
+        """Находит инициативу по ее _id"""
         try:
             oid = ObjectId(initiative_id)
         except Exception:
             return None
-        cursor = (
-            db[TaskRepo.collection_name]
-            .find({"initiative_id": oid})
-            .sort("_id", -1)
-            .limit(1)
-        )
-        results = await cursor.to_list(length=1)
-        return results[0] if results else None
+        return await db[TaskRepo.collection_name].find_one({"_id": oid})

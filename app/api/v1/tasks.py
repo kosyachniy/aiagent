@@ -19,8 +19,9 @@ async def telegram_webhook(bot_token: str, request: Request):
     Если это команда, сразу отвечаем.
     Иначе запускаем асинхронный pipeline через TaskManager.
     """
+
     if bot_token != settings.BOT_TOKEN:
-        logger.warning("Invalid bot token: %s", bot_token)
+        logger.warning(f"Invalid bot token: {bot_token}")
         raise HTTPException(status_code=403, detail="Invalid bot token")
 
     payload = await request.json()
@@ -42,7 +43,15 @@ async def telegram_webhook(bot_token: str, request: Request):
         }
 
     # Otherwise, let TaskManager decide
-    result = await TaskManager.handle_telegram(payload)
+    try:
+        result = await TaskManager.handle_telegram(payload)
+    except Exception as e:
+        logger.exception(f"Error handling Telegram webhook: {e}")
+        return {
+            "method": "sendMessage",
+            "chat_id": chat_id,
+            "text": "⚠️ Error",
+        }
 
     # If TaskManager returned a sync reply (error/info), send it now
     if isinstance(result, dict) and result.get("message") and chat_id:

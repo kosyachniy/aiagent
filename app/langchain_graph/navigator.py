@@ -7,7 +7,8 @@ import json
 
 from loguru import logger
 from langchain.prompts import PromptTemplate
-from langchain_openai import OpenAI
+from langchain_openai import ChatOpenAI
+from langchain_core.output_parsers import StrOutputParser
 
 from app.core.config import settings
 import app.db.mongodb as mongodb
@@ -40,13 +41,13 @@ class NavigatorGraph:
         input_variables=["task_text", "initiatives"],
     )
 
-    _llm = OpenAI(
+    _llm = ChatOpenAI(
         model_name="o4-mini",
-        temperature=0,
+        # temperature=0,
         openai_api_key=settings.OPENAI_API_KEY,
     )
 
-    _pipeline = _prompt | _llm
+    _pipeline = _prompt | _llm | StrOutputParser()
 
     @staticmethod
     async def run(task_text: str) -> dict:
@@ -65,26 +66,31 @@ class NavigatorGraph:
                 initiatives_docs, default=str, ensure_ascii=False
             )
         except Exception as e:
-            logger.exception("Error serializing initiatives: %s", e)
+            logger.exception(f"Error serializing initiatives: {e}")
             initiatives_json = "[]"
 
         # Вызов модели через RunnableSequence
         try:
-            logger.debug("NavigatorGraph input task: %s", task_text)
-            response = await NavigatorGraph._pipeline.arun(
-                task_text=task_text,
-                initiatives=initiatives_json,
+            logger.debug(f"NavigatorGraph input task: {task_text}")
+            response = await NavigatorGraph._pipeline.ainvoke(
+                {"task_text": task_text, "initiatives": initiatives_json}
             )
-            logger.debug("NavigatorGraph raw response: %s", response)
+            logger.debug(f"NavigatorGraph raw response: {response}")
         except Exception as e:
-            logger.exception("Error during NavigatorGraph run: %s", e)
+            logger.exception(f"Error during NavigatorGraph run: {e}")
             raise
 
         # Парсинг JSON-ответа
         try:
+            # Remove potential markdown code fences
+            if response.startswith("```json"):
+                response = response.removeprefix("```json\n").removesuffix("\n```")
+            elif response.startswith("```"):
+                response = response.removeprefix("```\n").removesuffix("\n```")
+
             result = json.loads(response)
         except json.JSONDecodeError:
-            logger.error("NavigatorGraph returned invalid JSON: %s", response)
+            logger.error(f"NavigatorGraph returned invalid JSON: {response}")
             raise ValueError("Invalid JSON from NavigatorGraph")
 
         return result
