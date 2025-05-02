@@ -1,6 +1,5 @@
-# app/main.py
-
 import sys
+
 from fastapi import FastAPI, Request, HTTPException
 from fastapi.responses import JSONResponse
 from loguru import logger
@@ -9,10 +8,17 @@ from app.core.config import settings
 from app.api.v1.router import router
 from app.db.mongodb import connect_to_mongo, close_mongo_connection
 
+
 def create_app() -> FastAPI:
     # Configure Loguru
     logger.remove()  # remove default handler
-    logger.add(sys.stdout, level=settings.LOG_LEVEL or "INFO", enqueue=True, backtrace=True, diagnose=True)
+    logger.add(
+        sys.stdout,
+        level=settings.LOG_LEVEL or "INFO",
+        enqueue=True,
+        backtrace=True,
+        diagnose=True,
+    )
     if settings.LOG_FILE:
         logger.add(
             settings.LOG_FILE,
@@ -56,5 +62,6 @@ def create_app() -> FastAPI:
     app.add_event_handler("shutdown", close_mongo_connection)
 
     return app
+
 
 app = create_app()

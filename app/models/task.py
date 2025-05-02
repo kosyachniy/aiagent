@@ -1,7 +1,8 @@
-from pydantic import BaseModel, Field
 from typing import List, Optional
 from datetime import datetime
 from enum import Enum
+
+from pydantic import BaseModel, Field, ConfigDict
 
 
 class TaskType(str, Enum):
@@ -20,6 +21,12 @@ class Priority(str, Enum):
 
 
 class Task(BaseModel):
+    model_config = ConfigDict(
+        validate_by_name=True,
+        from_attributes=True,
+        arbitrary_types_allowed=True,
+    )
+
     id: str = Field(..., alias="_id")
     title: str
     data: Optional[str]
@@ -30,11 +37,6 @@ class Task(BaseModel):
     priority: Priority
     type: TaskType
     subtasks: List["Task"] = []
-
-    class Config:
-        allow_population_by_field_name = True
-        arbitrary_types_allowed = True
-        orm_mode = True
 
 
 # Для рекурсивных ссылок

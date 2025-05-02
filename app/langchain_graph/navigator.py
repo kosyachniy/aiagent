@@ -4,12 +4,14 @@
 """
 
 import json
+
 from loguru import logger
-from langchain import OpenAI
-from langchain.chains import LLMChain
 from langchain.prompts import PromptTemplate
+from langchain_openai import OpenAI
+
 from app.core.config import settings
-from app.db.mongodb import db, TaskRepo
+import app.db.mongodb as mongodb
+from app.db.mongodb import TaskRepo
 
 
 class NavigatorGraph:
@@ -44,17 +46,17 @@ class NavigatorGraph:
         openai_api_key=settings.OPENAI_API_KEY,
     )
 
-    _chain = LLMChain(llm=_llm, prompt=_prompt)
+    _pipeline = _prompt | _llm
 
     @staticmethod
     async def run(task_text: str) -> dict:
         """
-        Выполняет LLMChain для определения вложенности задачи.
+        Запускает RunnableSequence для определения вложенности задачи.
         Возвращает распарсенный JSON с инициативой и блоком.
         """
         # Извлекаем текущие инициативы из БД
         initiatives_docs = (
-            await db[TaskRepo.collection_name]
+            await mongodb.db[TaskRepo.collection_name]
             .find({"type": "initiative"})
             .to_list(length=None)
         )
@@ -66,10 +68,10 @@ class NavigatorGraph:
             logger.exception("Error serializing initiatives: %s", e)
             initiatives_json = "[]"
 
-        # Вызов модели
+        # Вызов модели через RunnableSequence
         try:
             logger.debug("NavigatorGraph input task: %s", task_text)
-            response = await NavigatorGraph._chain.arun(
+            response = await NavigatorGraph._pipeline.arun(
                 task_text=task_text,
                 initiatives=initiatives_json,
             )

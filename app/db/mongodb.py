@@ -2,27 +2,29 @@
 Клиент MongoDB и репозиторий для работы с задачами.
 """
 
-import os
 from typing import Optional
 from bson import ObjectId
+
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
 from loguru import logger
 from app.core.config import settings
 
-# Глобальные объекты для соединения
-client: Optional[AsyncIOMotorClient] = None
-db: Optional[AsyncIOMotorDatabase] = None
+# Global client and database reference
+global client, db
+client: AsyncIOMotorClient | None = None
+db: AsyncIOMotorDatabase | None = None
 
 
 async def connect_to_mongo() -> None:
+    """Open connection to MongoDB and initialize 'db'."""
     global client, db
-    mongo_uri = settings.MONGO_URI
-    client = AsyncIOMotorClient(mongo_uri)
+    client = AsyncIOMotorClient(settings.MONGO_URI)
     db = client[settings.MONGO_DB_NAME]
-    logger.info(f"Connected to MongoDB: {mongo_uri}")
+    logger.info(f"Connected to MongoDB: {settings.MONGO_URI}")
 
 
 async def close_mongo_connection() -> None:
+    """Close MongoDB connection."""
     global client
     if client:
         client.close()

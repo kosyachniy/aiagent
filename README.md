@@ -61,29 +61,44 @@ repo-root/
 
 ### Локально
 
-1. Клонировать репозиторий:
+1. Установить MongoDB & Redis
    ```bash
-   git clone <repo-url> && cd repo-root
+   brew tap mongodb/brew
+   brew install mongodb-community@6.0
+   brew install mongosh
+   brew services start mongodb-community@6.0
+
+   brew tap ngrok/ngrok
+   brew install ngrok
    ```
-2. Создать виртуальное окружение и установить зависимости:
+
+2. Клонировать репозиторий:
+   ```bash
+   git clone git@github.com:kosyachniy/aiagent.git && cd aiagent
+   ```
+3. Создать виртуальное окружение и установить зависимости:
    ```bash
    python3 -m venv venv
    source venv/bin/activate
    pip install -r requirements.txt
    ```
-3. Запустить Redis:
+4. Запустить Redis:
    ```bash
-   docker run -d --name redis -p 6379:6379 redis:7-alpine
+   docker run -d --name redis -p 6379:6379 redis:7-alpine redis-server --requirepass <redis pass>
    ```
-4. Создать `.env.development` по примеру и заполнить переменные.
-5. Запустить API и worker:
+5. Создать `.env.development` по примеру и заполнить переменные.
+6. Запустить API и worker:
    ```bash
    uvicorn app.main:app --reload
-   dramatiq tasks.tasks --redis-url redis://localhost:6379
+   python worker.py
    ```
-6. Прокинуть вебхук через ngrok (опционально):
+7. Прокинуть вебхук через ngrok (опционально):
    ```bash
    ngrok http 8000
+   ```
+   ```bash
+   curl -F "url=<ngrok link>/webhook/<bot token>" \
+     https://api.telegram.org/bot<bot token>/setWebhook
    ```
 
 ### Docker & docker-compose

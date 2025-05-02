@@ -4,12 +4,14 @@
 """
 
 import json
+
 from loguru import logger
-from langchain import OpenAI
-from langchain.chains import LLMChain
 from langchain.prompts import PromptTemplate
+from langchain_openai import OpenAI
+
 from app.core.config import settings
-from app.db.mongodb import db, TaskRepo
+import app.db.mongodb as mongodb
+from app.db.mongodb import TaskRepo
 
 
 class ReprioritizerGraph:
@@ -54,12 +56,12 @@ class ReprioritizerGraph:
         openai_api_key=settings.OPENAI_API_KEY,
     )
 
-    _chain = LLMChain(llm=_llm, prompt=_prompt)
+    _pipeline = _prompt | _llm
 
     @staticmethod
     async def run(nav_result: dict) -> dict:
         """
-        Выполняет переприоритизацию для указанной инициативы (nav_result).
+        Запускает RunnableSequence для переприоритизации указанной инициативы (nav_result).
         nav_result: {
             "initiative_id": str,
             "block_id": str,
@@ -74,28 +76,30 @@ class ReprioritizerGraph:
 
             # Все RoadMap инициативы из БД
             all_docs = (
-                await db[TaskRepo.collection_name]
+                await mongodb.db[TaskRepo.collection_name]
                 .find({"type": "initiative"})
                 .to_list(length=None)
             )
             all_json = json.dumps(all_docs, default=str, ensure_ascii=False)
 
             # Бизнес-приоритеты (предполагается коллекция business_priorities с полем speech)
-            bp_doc = await db["business_priorities"].find_one(sort=[("_id", -1)])
-            bp_text = bp_doc.get("speech", "") if bp_doc else ""
+            bp_doc = await mongodb.db["business_priorities"].find_one(
+                sort=[("_id", -1)]
+            )
+            business_priorities = bp_doc.get("speech", "") if bp_doc else ""
 
             # Ресурсы разработчиков (предполагается коллекция resources)
-            resources_docs = await db["resources"].find().to_list(length=None)
+            resources_docs = await mongodb.db["resources"].find().to_list(length=None)
             resources_json = json.dumps(resources_docs, default=str, ensure_ascii=False)
 
-            # Вызов модели
+            # Вызов модели через RunnableSequence
             logger.debug(
                 "ReprioritizerGraph input initiative: %s", initiative.get("id")
             )
-            response = await ReprioritizerGraph._chain.arun(
+            response = await ReprioritizerGraph._pipeline.arun(
                 initiative=initiative_json,
                 all_initiatives=all_json,
-                business_priorities=bp_text,
+                business_priorities=business_priorities,
                 resources=resources_json,
             )
             logger.debug("ReprioritizerGraph raw response: %s", response)

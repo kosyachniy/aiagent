@@ -3,7 +3,9 @@
 """
 
 from typing import Any, Dict, Optional
+
 from loguru import logger
+
 from app.db.mongodb import TaskRepo
 from app.models.task import Task, TaskResponse
 from app.services.ai_agent import AIAgent
@@ -16,6 +18,7 @@ class TaskManager:
         Основная точка входа для обработки Telegram-пейлоада.
         Определяет, известна ли задача, и возвращает результат.
         """
+
         text = payload.get("message", {}).get("text", "").strip()
         if not text:
             logger.warning("Empty message payload: %s", payload)

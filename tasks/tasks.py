@@ -9,10 +9,13 @@ from app.db.mongodb import TaskRepo
 from app.integrations.sheets import update_roadmap_sheet
 from app.integrations.tracker import get_tracker_link
 
+# Set up broker from REDIS_URL environment in worker.py or use default
+# broker = RedisBroker(url=os.getenv("REDIS_URL"))
+# dramatiq.set_broker(broker)
+import dramatiq as _dramatiq  # noqa: F401
 
-dramatiq.set_broker(dramatiq.get_broker())
 
-@dramatiq.actor(max_retries=3, retry_delay=10000)
+@dramatiq.actor(max_retries=3, min_backoff=10000, max_backoff=60000)
 def process_new_task(task_text: str, chat_id: int):
     """
     Фоновая обработка новой задачи:
@@ -21,12 +24,10 @@ def process_new_task(task_text: str, chat_id: int):
     3. Обновление Google Sheets
     4. Отправка сообщения в Telegram с результатом
     """
-    logger.info(f"[process_new_task] Start for chat_id={chat_id}, task="{task_text}" )")
+    logger.info(f'[process_new_task] Start for chat_id={chat_id}, task="{task_text}"')
 
     async def pipeline():
-        # Запустить полный пайплайн AI-агента
         updated = await AIAgent.process_new_task(task_text)
-        # Сохранить в MongoDB
         await TaskRepo.save_initiative(updated)
         return updated
 
@@ -36,16 +37,13 @@ def process_new_task(task_text: str, chat_id: int):
         logger.exception("Error in AI pipeline: %s", e)
         raise
 
-    # Обновить Google Sheets и получить ссылку
     try:
         sheet_url = update_roadmap_sheet(updated_initiative)
     except Exception as e:
         logger.exception("Error updating Google Sheets: %s", e)
         sheet_url = None
 
-    # Сформировать ответ и отправить в Telegram
     bot = Bot(token=settings.BOT_TOKEN)
-    # Пример текста, можно расширить
     text = (
         f"Новая задача обработана.\n"
         f"Инициатива: {updated_initiative.get('title')}\n"
@@ -61,14 +59,13 @@ def process_new_task(task_text: str, chat_id: int):
 @dramatiq.actor
 def update_sheet(initiative_id: str, chat_id: int = None):
     """
-    Обновление листа Google Sheets по инициативе (может вызываться отдельно).
-    Если передан chat_id, вышлет ссылку в Telegram.
+    Обновление листа Google Sheets по инициативе.
+    Если передан chat_id — отправка ссылки в Telegram.
     """
     logger.info(f"[update_sheet] Initiative {initiative_id}")
 
     async def fetch():
-        doc = await TaskRepo.find_by_id(initiative_id)
-        return doc
+        return await TaskRepo.find_by_id(initiative_id)
 
     initiative = asyncio.run(fetch())
     if not initiative:
